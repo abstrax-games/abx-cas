@@ -1,0 +1,4 @@
+*.db
+jwt-secret-key
+secret-key
+node_modules

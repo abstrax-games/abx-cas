@@ -1,0 +1,26 @@
+{
+    "db": {
+        "type": "sqlite",
+        "database": "a.db"
+    },
+    "mail": {
+        "host": "xxxxx",
+        "port": 465,
+        "secure": true,
+        "auth": {
+            "user": "xxxxx",
+            "pass": "xxxxx"
+        }
+    },
+    "website": {
+        "title": "VegeTable OJ"
+    },
+    "ui": {
+        "theme": "light",
+        "language": "zh-CN"
+    },
+    "server": {
+        "port": 8080,
+        "allowedOrigins": ["localhost"]
+    }
+}
