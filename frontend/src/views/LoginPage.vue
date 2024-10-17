@@ -12,7 +12,7 @@ const router = useRouter();
 
 const notify = useNotification();
 
-const service = route.query.service as string || "default";
+const service = ref(route.query.service as string || "default");
 
 const loading = ref(true);
 const serviceInfo = ref(new Service());
@@ -26,7 +26,7 @@ async function login() {
         return;
     }
     loading.value = true;
-    const res = await UserServices.login(username.value, password.value, service);
+    const res = await UserServices.login(username.value, password.value, service.value);
     loading.value = false;
     if (res.success) {
         notify.success({
@@ -47,7 +47,7 @@ async function login() {
 
 onBeforeMount(async () => {
     try {
-        await serviceInfo.value.fetch(service);
+        await serviceInfo.value.fetch(service.value);
         if (!servicePath) {
             servicePath = serviceInfo.value.servicePath ?? `https://go.abstrax.cn/?service=${service}`;
         }
@@ -56,13 +56,7 @@ onBeforeMount(async () => {
     catch (e: any) {
         console.log(e);
         if (e.response && e.response.status === 404) {
-            router.push({
-                path: '/error',
-                query: {
-                    code: 404,
-                    mes: `不存在名为${service}的服务`,
-                }
-            });
+            service.value = "default";
         }
         else {
             router.push({
@@ -85,7 +79,7 @@ onBeforeMount(async () => {
                 <n-skeleton text style="width: 60%" />
             </template>
             <template v-else>
-                登录至<a href="">{{ serviceInfo.serviceName }}</a>
+                登录至<template v-if="service !== 'default'"><a :href="servicePath">{{ serviceInfo.serviceName }}</a></template><template v-else>Abstrax CAS</template>
             </template>
         </div>
         <div class="ax-input-box">

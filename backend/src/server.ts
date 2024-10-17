@@ -46,6 +46,7 @@ app.register(cors, {
             return;
         }
         const hostname = new URL(origin).hostname;
+        console.log(hostname)
         if (server.allowedOrigins.includes(hostname)) {
             //  Request from localhost will pass
             cb(null, true);

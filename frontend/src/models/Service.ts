@@ -1,4 +1,4 @@
-import axios, { AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosResponse } from 'axios';
 import APIResponse from './APIResponse';
 
 import { Backend } from '../libs/settings';
@@ -28,7 +28,9 @@ export default class Service {
 
     async fetch(serviceId: string) {
         try {
-            const serviceRes: AxiosResponse<APIResponse<ServiceData>> = await axios.get(`${Backend.url}/service/${serviceId}`);
+            const serviceRes: AxiosResponse<APIResponse<ServiceData>> = await axios.get(`${Backend.url}/service/${serviceId}`, {
+                withCredentials: true
+            });
             const data = serviceRes.data;
             if (data.success) {
                 const { id, serviceName, servicePath, privilegeKeys } = data.data;
@@ -39,11 +41,16 @@ export default class Service {
                 this.privilegeKeys = privilegeKeys;
             }
             else {
-                throw new Error(data.message);
+                //throw new Error(data.message);
             }
         }
         catch (e: any) {
-            throw e;
+            if (e instanceof AxiosError) {
+                console.log(e);
+            }
+            else {
+                console.log(e.response)
+            }
         }
     }
 }
