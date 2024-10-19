@@ -41,16 +41,11 @@ export default class Service {
                 this.privilegeKeys = privilegeKeys;
             }
             else {
-                //throw new Error(data.message);
+                throw new Error(data.message);
             }
         }
         catch (e: any) {
-            if (e instanceof AxiosError) {
-                console.log(e);
-            }
-            else {
-                console.log(e.response)
-            }
+            throw e;
         }
     }
 }

@@ -50,11 +50,5 @@ route.beforeEach((to, from, next) => {
     }
 })
 
-const query = new URLSearchParams(window.location.search);
-const service = query.get('service') || '';
-const backurl = query.get('path') || '/';
-
-console.log(service, backurl);
-
 app.use(route);
 app.mount('#app');

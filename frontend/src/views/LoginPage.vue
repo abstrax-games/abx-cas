@@ -54,7 +54,6 @@ onBeforeMount(async () => {
         loading.value = false;
     }
     catch (e: any) {
-        console.log(e);
         if (e.response && e.response.status === 404) {
             service.value = "default";
         }

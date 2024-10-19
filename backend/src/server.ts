@@ -40,12 +40,14 @@ app.register(fastifyStatic, {
 });
 
 app.register(cors, {
+    credentials: true,
     origin: (origin, cb) => {
         if (!origin) {
             cb(null, true);
             return;
         }
         const hostname = new URL(origin).hostname;
+        console.log(hostname);
         console.log(hostname)
         if (server.allowedOrigins.includes(hostname)) {
             //  Request from localhost will pass
