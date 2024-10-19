@@ -1,4 +1,4 @@
-import Fastify, { FastifyReply } from "fastify";
+import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import routes from "./routes";
 import fastifySecureSession from "@fastify/secure-session";
 import cors from "@fastify/cors";
@@ -131,9 +131,176 @@ function handleError(
     return reply.status(code).send({ success: false, message, ...data });
 }
 
+/**
+ * Libs
+ */
+
+/**
+ * 检查Session中是否有有效的TGT
+ * @param request Request
+ * @returns { tgt: Ticket, user: User }
+ */
+async function checkTGTFromSession(request: FastifyRequest) {
+    let tgt, user;
+
+    const ticketRepository = app.dataSource.getRepository(Ticket);
+    const userRepository = app.dataSource.getRepository(User);
+
+    // 首先观察Session中是否已经有有效的TGT了
+    const sessionTGT = request.axSession.get("tgt");
+    if (sessionTGT) {
+        console.log(`Session TGT: ${sessionTGT}`);
+        // 判定是否有效
+        try {
+            tgt = await ticketRepository.findOne({
+                where: {
+                    ticket: sessionTGT,
+                    ticketGrantingTicket: null,
+                    expired: MoreThan(new Date(Date.now())),
+                },
+            });
+        } catch (err) {
+            // 删除无效的TGT
+            request.axSession.set("tgt", null);
+            tgt = null;
+        }
+        // 从tgt获取用户信息
+        if (tgt) {
+            try {
+                user = await userRepository.findOne({
+                    where: { id: tgt.userid },
+                });
+            } catch (err) {
+                // 删除无效的TGT
+                request.axSession.set("tgt", null);
+                tgt = null;
+            }
+        } else {
+            // 删除无效的TGT
+            request.axSession.set("tgt", null);
+        }
+    }
+    return { tgt, user };
+}
+
+async function genTGTByUser(user: User, ip: string, ua: string) {
+    const ticketRepository = app.dataSource.getRepository(Ticket);
+
+    let tgt;
+    // 先查询是否已经存在有效的TGT
+    try {
+        tgt = await ticketRepository.findOne({
+            where: {
+                userid: user.id,
+                ticketGrantingTicket: null,
+                expired: MoreThan(new Date(Date.now())),
+            },
+        });
+    } catch (err) {
+        console.error(`Error finding TGT: ${err}\nUser: ${user.id}`);
+        throw err;
+    }
+    // 如果已经存在有效的TGT，直接返回，否则创建新的
+    if (!tgt) {
+        try {
+            tgt = ticketRepository.create({
+                ticket: crypto.randomBytes(32).toString("hex"),
+                userid: user.id,
+                consumed: null,
+                created: new Date(),
+                expired: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7天有效期
+                ticketGrantingTicket: null, // 标记为 TGT
+                ip,
+                ua,
+            });
+            await ticketRepository.save(tgt);
+        } catch (err) {
+            console.error(err);
+            throw err;
+        }
+    }
+
+    return tgt;
+}
+
+async function genSTByTGT(user: User, tgt: Ticket, ip: string, ua: string, serviceId?: string) {
+    let st;
+    const ticketRepository = app.dataSource.getRepository(Ticket);
+    if (serviceId) {
+        const serviceRepository = app.dataSource.getRepository(Service);
+        const service = await serviceRepository.findOne({
+            where: { serviceId },
+        });
+        //console.log(serviceId, service);
+        if (service) {
+            // 生成新的 Service Ticket
+            try {
+                st = ticketRepository.create({
+                    ticket: crypto.randomBytes(32).toString("hex"),
+                    userid: user.id,
+                    serviceId,
+                    consumed: null,
+                    created: new Date(),
+                    expired: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1天有效期
+                    ticketGrantingTicket: tgt.ticket, // 关联 TGT
+                    ip,
+                    ua,
+                });
+
+                await ticketRepository.save(st);
+            } catch (err) {
+                console.error(`Error creating service ticket: ${err}\nUser: ${user.id}\nService: ${serviceId}`);
+                throw err;
+            }
+        }
+    }
+    return st;
+}
+
+async function genJumpLink(tgt: string, st?: string, serviceId?: string) {
+    if (st && serviceId) {
+        const serviceRepository = app.dataSource.getRepository(Service);
+        const service = await serviceRepository.findOne({
+            where: { serviceId },
+        });
+        if (service) {
+            const callback = new URL(service.callbackPath);
+            callback.searchParams.append("ticket", st);
+            callback.searchParams.append("tgt", tgt);
+            return callback.toString();
+        }
+        else {
+            return `/user`;
+        }
+    }
+    else {
+        return `/user`;
+    }
+}
+
 // static pages
-app.get("/", async (request, reply) => {
-    return reply.sendFile("index.html");
+app.get<{ Querystring: { service?: string } }>("/", async (request, reply) => {
+    let { tgt, user } = await checkTGTFromSession(request);
+
+    if (tgt) {
+        const serviceId = request.query.service;
+        if (serviceId) {
+            let st;
+            try {
+                st = await genSTByTGT(user, tgt, request.ip, request.headers["user-agent"] as string, serviceId);
+            }
+            catch (err) {
+                return reply.redirect(`/error?code=500&mes=Error creating service ticket`);
+            }
+            return reply.redirect(await genJumpLink(tgt.ticket, st.ticket, serviceId));
+        }
+        else {
+            return reply.redirect(`/user`);
+        }
+    }
+    else {
+        return reply.sendFile("index.html");
+    }
 });
 
 app.get("/register", async (request, reply) => {
@@ -141,6 +308,10 @@ app.get("/register", async (request, reply) => {
 });
 
 app.get("/error", async (request, reply) => {
+    return reply.sendFile("index.html");
+});
+
+app.get('/user', async (request, reply) => {
     return reply.sendFile("index.html");
 });
 
@@ -333,44 +504,10 @@ app.post<{ Body: AuthBody }>(
         },
     },
     async (request, reply) => {
-        let tgt, user;
+        let { tgt, user } = await checkTGTFromSession(request);
 
-        const ticketRepository = app.dataSource.getRepository(Ticket);
         const userRepository = app.dataSource.getRepository(User);
-
-        // 首先观察Session中是否已经有有效的TGT了
-        const sessionTGT = request.axSession.get("tgt");
-        if (sessionTGT) {
-            // 判定是否有效
-            try {
-                tgt = await ticketRepository.findOne({
-                    where: {
-                        ticket: sessionTGT,
-                        ticketGrantingTicket: null,
-                        expired: MoreThan(new Date(Date.now())),
-                    },
-                });
-            } catch (err) {
-                // 删除无效的TGT
-                request.axSession.set("tgt", null);
-                tgt = null;
-            }
-            // 从tgt获取用户信息
-            if (tgt) {
-                try {
-                    user = await userRepository.findOne({
-                        where: { id: tgt.userid },
-                    });
-                } catch (err) {
-                    // 删除无效的TGT
-                    request.axSession.set("tgt", null);
-                    tgt = null;
-                }
-            } else {
-                // 删除无效的TGT
-                request.axSession.set("tgt", null);
-            }
-        }
+        const ticketRepository = app.dataSource.getRepository(Ticket);
 
         const ip = (request.headers["x-real-ip"] as string) || request.ip;
         const ua = request.headers["user-agent"] as string;
@@ -485,36 +622,11 @@ app.post<{ Body: AuthBody }>(
             }
 
             // 登录成功，创建票据
-            // 先查询是否已经存在有效的TGT
             try {
-                tgt = await ticketRepository.findOne({
-                    where: {
-                        userid: user.id,
-                        ticketGrantingTicket: null,
-                        expired: MoreThan(new Date(Date.now())),
-                    },
-                });
-            } catch (err) {
-                return handleError(reply, 500, "Error finding ticket");
+                tgt = await genTGTByUser(user, ip, ua);
             }
-            // 如果已经存在有效的TGT，直接返回，否则创建新的
-            if (!tgt) {
-                try {
-                    tgt = ticketRepository.create({
-                        ticket: crypto.randomBytes(32).toString("hex"),
-                        userid: user.id,
-                        consumed: null,
-                        created: new Date(),
-                        expired: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7天有效期
-                        ticketGrantingTicket: null, // 标记为 TGT
-                        ip,
-                        ua,
-                    });
-                    await ticketRepository.save(tgt);
-                } catch (err) {
-                    console.log(err);
-                    return handleError(reply, 500, "Error creating ticket");
-                }
+            catch (err) {
+                return handleError(reply, 500, "Error creating ticket");
             }
         }
 
@@ -522,38 +634,13 @@ app.post<{ Body: AuthBody }>(
         request.axSession.set("tgt", tgt.ticket);
 
         // 生成 Service Ticket (ST)
-        let st;
         const { serviceId } = request.body;
-        if (serviceId) {
-            const serviceRepository = app.dataSource.getRepository(Service);
-            const service = await serviceRepository.findOne({
-                where: { serviceId },
-            });
-            //console.log(serviceId, service);
-            if (service) {
-                // 生成新的 Service Ticket
-                try {
-                    st = ticketRepository.create({
-                        ticket: crypto.randomBytes(32).toString("hex"),
-                        userid: user.id,
-                        serviceId,
-                        consumed: null,
-                        created: new Date(),
-                        expired: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1天有效期
-                        ticketGrantingTicket: tgt.ticket, // 关联 TGT
-                        ip,
-                        ua,
-                    });
-
-                    await ticketRepository.save(st);
-                } catch (err) {
-                    return handleError(
-                        reply,
-                        500,
-                        "Error creating service ticket"
-                    );
-                }
-            }
+        let st;
+        try {
+            st = genSTByTGT(user, tgt, ip, ua, serviceId);
+        }
+        catch (err) {
+            return handleError(reply, 500, "Error creating service ticket");
         }
 
         return { success: true, tgt: tgt.ticket, ticket: st?.ticket };
@@ -587,8 +674,7 @@ app.post<{ Body: RegisterBody }>(
             email,
             emailCaptcha,
             phone,
-            phoneCaptcha,
-            serviceId,
+            phoneCaptcha
         } = request.body;
 
         // 手机和邮箱至少提供一个
@@ -667,61 +753,22 @@ app.post<{ Body: RegisterBody }>(
         const ticketRepository = app.dataSource.getRepository(Ticket);
         let tgt: Ticket;
         try {
-            tgt = ticketRepository.create({
-                ticket: crypto.randomBytes(32).toString("hex"),
-                userid: newUser.id,
-                consumed: null,
-                created: new Date(),
-                expired: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7天有效期
-                ticketGrantingTicket: null, // 标记为 TGT
-                ip,
-                ua,
-            });
-
-            await ticketRepository.save(tgt);
+            tgt = await genTGTByUser(newUser, ip, ua);
         } catch (err) {
-            console.log(err);
             return handleError(reply, 500, "Error creating ticket");
         }
 
         request.axSession.set("tgt", tgt.ticket);
 
-        let st: Ticket;
-        if (serviceId) {
-            const serviceRepository = app.dataSource.getRepository(Service);
-            let service: Service;
-            try {
-                service = await serviceRepository.findOne({
-                    where: { serviceId },
-                });
-            } catch (err) {
-                return handleError(reply, 500, "Error finding service");
-            }
-            if (service) {
-                // 生成新的 Service Ticket
-                try {
-                    st = ticketRepository.create({
-                        ticket: crypto.randomBytes(32).toString("hex"),
-                        userid: user.id,
-                        serviceId,
-                        consumed: null,
-                        created: new Date(),
-                        expired: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1天有效期
-                        ticketGrantingTicket: tgt.ticket, // 关联 TGT
-                        ip,
-                        ua,
-                    });
-
-                    await ticketRepository.save(st);
-                } catch (err) {
-                    return handleError(
-                        reply,
-                        500,
-                        "Error creating service ticket"
-                    );
-                }
-            }
+        const { serviceId } = request.body;
+        let st;
+        try {
+            st = genSTByTGT(user, tgt, ip, ua, serviceId);
         }
+        catch (err) {
+            return handleError(reply, 500, "Error creating service ticket");
+        }
+
         return { success: true, tgt: tgt.ticket, ticket: st?.ticket };
     }
 );

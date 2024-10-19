@@ -31,6 +31,10 @@ const route = createRouter({
             component: () => import('./views/ForgetPassword.vue')
         },
         {
+            path: '/user',
+            component: () => import('./views/UserPage.vue')
+        },
+        {
             path: '/error',
             component: () => import('./views/ErrorPage.vue')
         },

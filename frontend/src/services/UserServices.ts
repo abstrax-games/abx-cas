@@ -8,6 +8,9 @@ export class UserServices {
 
     public static async register(username: string, email: string, password: string, emailCaptcha: string, service?: string): Promise<any> {
         try {
+            if (service === "default") {
+                service = undefined;
+            }
             const res = await axios.post(`${this.backendUrl}/auth/register`, { username, email, password, emailCaptcha, serviceId: service });
             return res.data;
         } catch (error) {
@@ -23,6 +26,9 @@ export class UserServices {
 
     public static async login(username: string, password: string, service?: string): Promise<any> {
         try {
+            if (service === "default") {
+                service = undefined;
+            }
             const res = await axios.post(`${this.backendUrl}/auth/login`, { username, password, serviceId: service });
             return res.data;
         } catch (error) {

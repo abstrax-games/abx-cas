@@ -49,12 +49,12 @@ onBeforeMount(async () => {
     try {
         await serviceInfo.value.fetch(service.value);
         if (!servicePath) {
-            servicePath = serviceInfo.value.servicePath ?? `https://go.abstrax.cn/?service=${service}`;
+            servicePath = serviceInfo.value.servicePath ?? `https://go.abstrax.cn/?service=${service.value}`;
         }
-        loading.value = false;
     }
     catch (e: any) {
         if (e.response && e.response.status === 404) {
+            console.warn(`Service ${service.value} not found`);
             service.value = "default";
         }
         else {
@@ -67,7 +67,10 @@ onBeforeMount(async () => {
             })
         }
     }
-})
+    finally {
+        loading.value = false;
+    }
+});
 </script>
 
 <template>

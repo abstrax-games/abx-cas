@@ -15,7 +15,7 @@ const router = useRouter();
 
 const notify = useNotification();
 
-const service = route.query.service as string || "default";
+const service = ref(route.query.service as string || "default");
 
 const loading = ref(true);
 const serviceInfo = ref(new Service());
@@ -104,7 +104,7 @@ async function register() {
         return;
     }
     loading.value = true;
-    const res = await UserServices.register(username.value, email.value, password.value, emailCaptcha.value, service);
+    const res = await UserServices.register(username.value, email.value, password.value, emailCaptcha.value, service.value);
     loading.value = false;
     if (res.success) {
         notify.success({
@@ -124,22 +124,15 @@ async function register() {
 
 onBeforeMount(async () => {
     try {
-        await serviceInfo.value.fetch(service);
+        await serviceInfo.value.fetch(service.value);
         if (!servicePath) {
-            servicePath = serviceInfo.value.servicePath ?? `https://go.abstrax.cn/?service=${service}`;
+            servicePath = serviceInfo.value.servicePath ?? `https://go.abstrax.cn/?service=${service.value}`;
         }
-        loading.value = false;
     }
     catch (e: any) {
-        console.log(e);
         if (e.response && e.response.status === 404) {
-            router.push({
-                path: '/error',
-                query: {
-                    code: 404,
-                    mes: `不存在名为${service}的服务`,
-                }
-            });
+            console.warn(`Service ${service.value} not found`);
+            service.value = "default";
         }
         else {
             router.push({
@@ -150,6 +143,9 @@ onBeforeMount(async () => {
                 }
             })
         }
+    }
+    finally {
+        loading.value = false;
     }
 })
 </script>
@@ -180,17 +176,16 @@ onBeforeMount(async () => {
                 <div class="ax-input-bar"></div>
             </div>
             <div class="ax-input-box">
-                <input class="ax-input" type="email" v-model="email" placeholder="邮箱" :disabled="loading" />
-                <div class="ax-input-bar"></div>
-            </div>
-            <div class="ax-input-box">
                 <div class="ax-input-box-group">
-                    <input class="ax-input" type="text" v-model="emailCaptcha" placeholder="邮箱验证码"
-                        :disabled="loading" />
+                    <input class="ax-input" type="email" v-model="email" placeholder="邮箱" :disabled="loading" />
                     <n-button type="info" strong secondary style="border-radius: 0;"
                         :disabled="loading || emailCaptchaLastSecond > 0" @click="showImgCaptchaModal">获取验证码<template
                             v-if="emailCaptchaLastSecond > 0">({{ emailCaptchaLastSecond }}) </template></n-button>
                 </div>
+            </div>
+            <div class="ax-input-box">
+                <input class="ax-input" type="text" v-model="emailCaptcha" placeholder="邮箱验证码" :disabled="loading" />
+                <div class="ax-input-bar"></div>
             </div>
         </div>
         <div class="ax-button-box">

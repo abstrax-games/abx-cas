@@ -15,6 +15,9 @@ export class Service {
     @Column()
     servicePath: string;
 
+    @Column()
+    callbackPath: string;
+
     // 1 for username
     // 2 for email
     // 4 for phone
