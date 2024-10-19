@@ -898,6 +898,34 @@ app.post<{ Body: { ticket: string; tgt?: string; serviceId: string } }>(
     }
 );
 
+// 查询用户的全部TGT信息
+app.get("/auth/tickets", async (request, reply) => {
+    let { tgt, user } = await checkTGTFromSession(request);
+
+    if (tgt) {
+        // 查询该TGT下的所有ST，每个应用只返回一个
+        const ticketRepository = app.dataSource.getRepository(Ticket);
+        const serviceTickets = await ticketRepository.find({
+            where: {
+                userid: tgt.userid,
+                ticketGrantingTicket: tgt.ticket,
+                consumed: null,
+            },
+        });
+        return {
+            login: true,
+            tgt: { ticket: tgt.ticket, ip: tgt.ip, ua: tgt.ua },
+            user: user.username,
+            st: serviceTickets.map((st) => ({ ticket: st.ticket, serviceId: st.serviceId })),
+        }
+    }
+    else {
+        return {
+            login: false
+        }
+    }
+});
+
 // Run the server!
 app.listen(server, function (err, address) {
     if (err) {
