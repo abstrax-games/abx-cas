@@ -10,7 +10,7 @@ import "reflect-metadata";
 import typeorm from "./plugins/typeorm";
 import { User, Service, Ticket, Captcha } from "./models";
 import { db, server, mail } from "../config.json";
-import { DataSource, MoreThan } from "typeorm";
+import { DataSource, MoreThan, Not } from "typeorm";
 
 // node mailer
 import nodemailer from "nodemailer";
@@ -24,7 +24,7 @@ import { CAPTCHA_TYPE } from "./constants";
 
 const appInfo = {
     name: "Abstrax Authentication Platform",
-    version: "0.0.1 Beta",
+    version: "1.0.0",
 };
 
 // --------------------------
@@ -776,7 +776,7 @@ app.post<{ Body: RegisterBody }>(
 );
 
 // 验证票据接口，验证 Service Ticket (ST) 或 Ticket Granting Ticket (TGT)
-app.post<{ Body: { ticket: string; tgt?: string; serviceId: string } }>(
+app.post<{ Body: { ticket: string; serviceId: string } }>(
     "/auth/check",
     {
         schema: {
@@ -785,14 +785,13 @@ app.post<{ Body: { ticket: string; tgt?: string; serviceId: string } }>(
                 required: ["ticket", "serviceId"],
                 properties: {
                     ticket: { type: "string" }, // 必须提供 Service Ticket
-                    tgt: { type: "string" }, // 可选的 TGT
                     serviceId: { type: "string" },
                 },
             },
         },
     },
     async (request, reply) => {
-        const { ticket, tgt, serviceId } = request.body;
+        const { ticket, serviceId } = request.body;
 
         const serviceRepository = app.dataSource.getRepository(Service);
         const service = await serviceRepository.findOne({
@@ -860,12 +859,12 @@ app.get("/auth/tickets", async (request, reply) => {
             where: {
                 userid: tgt.userid,
                 ticketGrantingTicket: tgt.ticket,
-                consumed: null,
+                consumed: Not(null),
             },
         });
         return {
             login: true,
-            tgt: { ticket: tgt.ticket, ip: tgt.ip, ua: tgt.ua },
+            auth: { ip: tgt.ip, ua: tgt.ua },
             user: user.username,
             st: serviceTickets.map((st) => ({ ticket: st.ticket, serviceId: st.serviceId })),
         }

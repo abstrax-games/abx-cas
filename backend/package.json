@@ -1,6 +1,6 @@
 {
   "name": "abx-cas-be",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "CAS authentication system backend for abstrax",
   "main": "index.js",
   "license": "MIT",
