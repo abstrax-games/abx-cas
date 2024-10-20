@@ -33,7 +33,7 @@ async function login() {
             title: '登录成功',
             duration: 3000
         });
-        location.href = returnRoute(route.query.path as string, res.tgt, res.ticket);
+        router.push(res.callback ?? '/user');
     }
     else {
         notify.error({

@@ -32,7 +32,7 @@ const route = createRouter({
         },
         {
             path: '/user',
-            component: () => import('./views/UserPage.vue')
+            component: () => import('./views/UserTickets.vue')
         },
         {
             path: '/error',

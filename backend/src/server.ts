@@ -257,7 +257,7 @@ async function genSTByTGT(user: User, tgt: Ticket, ip: string, ua: string, servi
     return st;
 }
 
-async function genJumpLink(tgt: string, st?: string, serviceId?: string) {
+async function genJumpLink(st?: string, serviceId?: string) {
     if (st && serviceId) {
         const serviceRepository = app.dataSource.getRepository(Service);
         const service = await serviceRepository.findOne({
@@ -266,7 +266,6 @@ async function genJumpLink(tgt: string, st?: string, serviceId?: string) {
         if (service) {
             const callback = new URL(service.callbackPath);
             callback.searchParams.append("ticket", st);
-            callback.searchParams.append("tgt", tgt);
             return callback.toString();
         }
         else {
@@ -292,7 +291,7 @@ app.get<{ Querystring: { service?: string } }>("/", async (request, reply) => {
             catch (err) {
                 return reply.redirect(`/error?code=500&mes=Error creating service ticket`);
             }
-            return reply.redirect(await genJumpLink(tgt.ticket, st.ticket, serviceId));
+            return reply.redirect(await genJumpLink(st.ticket, serviceId));
         }
         else {
             return reply.redirect(`/user`);
@@ -643,7 +642,9 @@ app.post<{ Body: AuthBody }>(
             return handleError(reply, 500, "Error creating service ticket");
         }
 
-        return { success: true, tgt: tgt.ticket, ticket: st?.ticket };
+        const callback = await genJumpLink(st?.ticket, serviceId);
+
+        return { success: true, callback };
     }
 );
 
@@ -750,7 +751,6 @@ app.post<{ Body: RegisterBody }>(
         }
 
         // 生成 Ticket Granting Ticket (TGT)
-        const ticketRepository = app.dataSource.getRepository(Ticket);
         let tgt: Ticket;
         try {
             tgt = await genTGTByUser(newUser, ip, ua);
@@ -769,7 +769,9 @@ app.post<{ Body: RegisterBody }>(
             return handleError(reply, 500, "Error creating service ticket");
         }
 
-        return { success: true, tgt: tgt.ticket, ticket: st?.ticket };
+        const callback = await genJumpLink(st?.ticket, serviceId);
+
+        return { success: true, callback };
     }
 );
 
@@ -821,57 +823,6 @@ app.post<{ Body: { ticket: string; tgt?: string; serviceId: string } }>(
         }
 
         if (!serviceTicket) {
-            // 如果 ST 无效，检查是否提供了有效的 TGT
-            if (tgt) {
-                let tgtTicket: Ticket;
-                try {
-                    await ticketRepository.findOne({
-                        where: {
-                            ticket: tgt,
-                            ticketGrantingTicket: null, // 确保这是 TGT
-                            expired: MoreThan(new Date()), // 确保 TGT 未过期
-                        },
-                    });
-                } catch (err) {
-                    return handleError(reply, 500, "Error finding TGT");
-                }
-
-                if (!tgtTicket) {
-                    return reply.status(401).send({
-                        success: false,
-                        message: "Invalid TGT",
-                    });
-                }
-
-                try {
-                    // 生成新的 Service Ticket (ST)
-                    serviceTicket = ticketRepository.create({
-                        ticket: crypto.randomBytes(32).toString("hex"),
-                        userid: tgtTicket.userid,
-                        serviceId,
-                        consumed: null,
-                        created: new Date(),
-                        expired: new Date(Date.now() + 24 * 60 * 60 * 1000), // 1天有效期
-                        ticketGrantingTicket: tgt, // 关联 TGT
-                        ip,
-                        ua,
-                    });
-                    await ticketRepository.save(serviceTicket);
-                } catch (err) {
-                    return handleError(
-                        reply,
-                        500,
-                        "Error creating Service Ticket"
-                    );
-                }
-
-                return {
-                    success: true,
-                    message: "New Service Ticket generated",
-                    ticket: serviceTicket.ticket,
-                };
-            }
-
             return handleError(reply, 401, "Invalid Service Ticket");
         }
 

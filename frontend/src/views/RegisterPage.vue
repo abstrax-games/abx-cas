@@ -111,7 +111,7 @@ async function register() {
             title: '注册成功',
             duration: 3000
         });
-        location.href = returnRoute(route.query.path as string, res.tgt, res.ticket);
+        router.push(res.callback ?? '/user');
     }
     else {
         notify.error({
@@ -187,13 +187,13 @@ onBeforeMount(async () => {
                 <input class="ax-input" type="text" v-model="emailCaptcha" placeholder="邮箱验证码" :disabled="loading" />
                 <div class="ax-input-bar"></div>
             </div>
-        </div>
-        <div class="ax-button-box">
-            <div>
-                已有账号，立刻<router-link to="/">登录</router-link>
+            <div class="ax-button-box">
+                <div>
+                    已有账号，立刻<router-link to="/">登录</router-link>
+                </div>
+                <n-button type="info" style="border-radius: 0; padding-left: 40px; padding-right: 40px;"
+                    :disabled="loading" @click="register">注册</n-button>
             </div>
-            <n-button type="info" style="border-radius: 0; padding-left: 40px; padding-right: 40px;" :disabled="loading"
-                @click="register">注册</n-button>
         </div>
     </div>
     <n-modal v-model:show="showCaptchaModal" preset="dialog" title="Dialog">
@@ -219,7 +219,8 @@ onBeforeMount(async () => {
 
 <style>
 .ax-register-container {
-    height: 306.65px;
+    height: 399px;
+    max-height: calc(100vh - 182.4px);
     overflow-y: auto;
     margin: 0 -48px;
     padding: 0 48px;

@@ -20,4 +20,14 @@ export class BaseServices {
             }
         }
     }
+
+    public static async getAuthTickets() {
+        try {
+            const res = await axios.get(`${this.backendUrl}/auth/tickets`);
+            return res.data;
+        }
+        catch (error) {
+            return error;
+        }
+    }
 }
